@@ -1,0 +1,15 @@
+__pycache__/
+*.py[cod]
+*.egg-info/
+.pytest_cache/
+.venv/
+build/
+dist/
+
+# data, runs and model weights stay out of git
+data/
+runs/
+toy_data/
+*.pt
+*.pth
+*.joblib

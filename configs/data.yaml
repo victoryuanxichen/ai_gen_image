@@ -1,0 +1,138 @@
+# Data registry: which folders feed which part of the pipeline.
+#
+# Build the manifest with:
+#   python -m aidetect manifest --registry configs/data.yaml --out data/manifest.csv
+#
+# IMPORTANT: the folder names below follow each dataset's README. Unzipped
+# archives sometimes add an extra folder level, so check every `path` against
+# your disk. The manifest command prints per-generator counts and warns about
+# sources that match no images. See docs/DATASET.md for download sources.
+#
+# role:  seen      = used for training (split: train) or as the hold-out test (split: test)
+#        near_seen = never trained on, same model family as a seen generator
+#        unseen    = never trained on, different family or version
+# Sources with role near_seen or unseen can only have split: test.
+
+root: /data                 # everything below is relative to this folder
+seed: 0
+val_fraction: 0.05          # share of each `split: train` source held out for validation
+
+# Optional ImageNet label files, used only to give real images a content
+# category for the bias analysis (both ship with the ImageNet / Kaggle devkit).
+# imagenet_synsets: /data/imagenet/LOC_synset_mapping.txt
+# imagenet_val_labels: /data/imagenet/LOC_val_solution.csv
+
+# Category rules for GenImage file names. Assumed naming, verify on your copy:
+#   generated: "<class index>_<generator>_<id>.png"   e.g. 017_sdv4_00042.png
+#   real train: "<wnid>_<id>.JPEG"                    e.g. n01440764_10026.JPEG
+#   real val:   "ILSVRC2012_val_<id>.JPEG"            (needs imagenet_val_labels)
+_genimage_fake: &genimage_fake {from: regex, pattern: '^(\d+)_', kind: imagenet_index}
+_genimage_real_train: &genimage_real_train {from: regex, pattern: '^(n\d{8})_', kind: wnid}
+_genimage_real_val: &genimage_real_val {from: val_labels}
+
+sources:
+  # ---- Seen generator 1: Stable Diffusion v1.4 (latent diffusion), GenImage ----
+  - name: genimage_sd14_train
+    dataset: genimage
+    path: "GenImage/Stable Diffusion V1.4/train"
+    real_glob: "nature/*"
+    fake_glob: "ai/*"
+    generator: sd_v1.4
+    family: latent_diffusion
+    role: seen
+    split: train
+    max_per_label: 60000        # raise if you have the disk and time; lower for a quick run
+    category_real: *genimage_real_train
+    category_fake: *genimage_fake
+
+  - name: genimage_sd14_test
+    dataset: genimage
+    path: "GenImage/Stable Diffusion V1.4/val"
+    real_glob: "nature/*"
+    fake_glob: "ai/*"
+    generator: sd_v1.4
+    family: latent_diffusion
+    role: seen
+    split: test
+    category_real: *genimage_real_val
+    category_fake: *genimage_fake
+
+  # ---- Seen generator 2: ProGAN (GAN), ForenSynths / CNNDetection ----
+  - name: forensynths_progan_train
+    dataset: forensynths
+    path: "ForenSynths/train/progan"
+    real_glob: "*/0_real/*"
+    fake_glob: "*/1_fake/*"
+    generator: progan
+    family: gan
+    role: seen
+    split: train
+    max_per_label: 60000
+    category: {from: parent, level: 2}      # the LSUN class folder (airplane, bird, ...)
+
+  - name: forensynths_progan_test
+    dataset: forensynths
+    path: "ForenSynths/test/progan"
+    real_glob: "*/0_real/*"
+    fake_glob: "*/1_fake/*"
+    generator: progan
+    family: gan
+    role: seen
+    split: test
+    category: {from: parent, level: 2}
+
+  # ---- Near-seen: same Stable Diffusion architecture as the training generator ----
+  - {name: genimage_sd15, dataset: genimage, path: "GenImage/Stable Diffusion V1.5/val",
+     real_glob: "nature/*", fake_glob: "ai/*", generator: sd_v1.5, family: latent_diffusion,
+     role: near_seen, split: test, category_real: *genimage_real_val, category_fake: *genimage_fake}
+  - {name: genimage_wukong, dataset: genimage, path: "GenImage/Wukong/val",
+     real_glob: "nature/*", fake_glob: "ai/*", generator: wukong, family: latent_diffusion,
+     role: near_seen, split: test, category_real: *genimage_real_val, category_fake: *genimage_fake}
+
+  # ---- Unseen, GenImage ----
+  - {name: genimage_midjourney, dataset: genimage, path: "GenImage/Midjourney/val",
+     real_glob: "nature/*", fake_glob: "ai/*", generator: midjourney, family: commercial,
+     role: unseen, split: test, category_real: *genimage_real_val, category_fake: *genimage_fake}
+  - {name: genimage_adm, dataset: genimage, path: "GenImage/ADM/val",
+     real_glob: "nature/*", fake_glob: "ai/*", generator: adm, family: pixel_diffusion,
+     role: unseen, split: test, category_real: *genimage_real_val, category_fake: *genimage_fake}
+  - {name: genimage_glide, dataset: genimage, path: "GenImage/GLIDE/val",
+     real_glob: "nature/*", fake_glob: "ai/*", generator: glide, family: pixel_diffusion,
+     role: unseen, split: test, category_real: *genimage_real_val, category_fake: *genimage_fake}
+  - {name: genimage_vqdm, dataset: genimage, path: "GenImage/VQDM/val",
+     real_glob: "nature/*", fake_glob: "ai/*", generator: vqdm, family: vq_diffusion,
+     role: unseen, split: test, category_real: *genimage_real_val, category_fake: *genimage_fake}
+  - {name: genimage_biggan, dataset: genimage, path: "GenImage/BigGAN/val",
+     real_glob: "nature/*", fake_glob: "ai/*", generator: biggan, family: gan,
+     role: unseen, split: test, category_real: *genimage_real_val, category_fake: *genimage_fake}
+
+  # ---- Unseen GANs, ForenSynths test set (skipped if the folder is absent) ----
+  # stylegan, stylegan2 and cyclegan have one sub-folder per class; the others do not.
+  - {name: forensynths_stylegan, dataset: forensynths, path: "ForenSynths/test/stylegan", optional: true,
+     real_glob: "**/0_real/*", fake_glob: "**/1_fake/*", generator: stylegan, family: gan,
+     role: unseen, split: test, category: {from: parent, level: 2}}
+  - {name: forensynths_stylegan2, dataset: forensynths, path: "ForenSynths/test/stylegan2", optional: true,
+     real_glob: "**/0_real/*", fake_glob: "**/1_fake/*", generator: stylegan2, family: gan,
+     role: unseen, split: test, category: {from: parent, level: 2}}
+  - {name: forensynths_cyclegan, dataset: forensynths, path: "ForenSynths/test/cyclegan", optional: true,
+     real_glob: "**/0_real/*", fake_glob: "**/1_fake/*", generator: cyclegan, family: gan,
+     role: unseen, split: test, category: {from: parent, level: 2}}
+  - {name: forensynths_stargan, dataset: forensynths, path: "ForenSynths/test/stargan", optional: true,
+     real_glob: "**/0_real/*", fake_glob: "**/1_fake/*", generator: stargan, family: gan,
+     role: unseen, split: test}
+  - {name: forensynths_gaugan, dataset: forensynths, path: "ForenSynths/test/gaugan", optional: true,
+     real_glob: "**/0_real/*", fake_glob: "**/1_fake/*", generator: gaugan, family: gan,
+     role: unseen, split: test}
+
+  # ---- Unseen diffusion / autoregressive, UniversalFakeDetect test set (optional) ----
+  # Its README names LDM and GLIDE subsets with 1k real and 1k generated images
+  # per domain. Add one entry per generator folder you find after unzipping, e.g.:
+  #
+  # - {name: ufd_ldm_200, dataset: universalfakedetect, path: "diffusion_datasets", optional: true,
+  #    real_glob: "laion/0_real/*", fake_glob: "ldm_200/1_fake/*", generator: ldm_200,
+  #    family: latent_diffusion, role: unseen, split: test,
+  #    real_shard: [0, 4]}     # if several generators share one real folder, give each
+  #                            # a different slice: [0, 4], [1, 4], [2, 4], [3, 4]
+  #
+  # Any other set (GigaGAN, DALL-E 3, FLUX, a sample of your own platform's images)
+  # is added the same way: point `path` at a folder with real and generated images.

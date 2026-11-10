@@ -1,0 +1,58 @@
+# Training configuration. Any key left out falls back to the default in aidetect/train.py.
+#
+#   python -m aidetect train --manifest data/manifest.csv --config configs/train.yaml --out runs/main
+
+seed: 0
+
+model:
+  # Frozen foundation-model backbone + trained head. Alternatives (all timm names):
+  #   vit_base_patch16_dinov3.lvd1689m      smaller, for GPUs with less than 8 GB
+  #   vit_large_patch14_clip_224.openai     CLIP ViT-L/14 (MIT licence), the UniversalFakeDetect backbone
+  #   vit_large_patch14_dinov2.lvd142m      DINOv2 (Apache-2.0); set img_size: 224
+  # DINOv3 weights are under Meta's DINOv3 License and may need a Hugging Face
+  # login (`huggingface-cli login`) after accepting the terms on the model page.
+  backbone: vit_large_patch16_dinov3.lvd1689m
+  head: linear            # linear | mlp
+  hidden_dim: 512         # mlp only
+  dropout: 0.0
+  unfreeze_last_n: 0      # keep 0: fine-tuning the backbone has been reported to hurt generalization
+  img_size: null
+
+data:
+  image_size: null                # null = the backbone's native input size
+  harmonize_jpeg_quality: 96      # re-encode every non-JPEG input as JPEG q96; null disables
+  crop_scale: [0.3, 1.0]
+  workers: 8
+
+augment:                          # applied to real and generated images alike
+  enabled: true
+  p_resize: 0.3
+  resize_scale: [0.4, 1.6]
+  p_blur: 0.3
+  blur_sigma: [0.1, 2.5]
+  p_noise: 0.2
+  noise_sigma: [1.0, 8.0]
+  p_jpeg: 0.5
+  jpeg_quality: [40, 100]
+
+train:
+  epochs: 3
+  batch_size: 128                 # lower to 64 if the GPU runs out of memory
+  samples_per_epoch: null         # null = number of training rows
+  lr: 1.0e-3
+  backbone_lr_mult: 0.01          # only used when unfreeze_last_n > 0
+  weight_decay: 1.0e-4
+  warmup_fraction: 0.05
+  label_smoothing: 0.0
+  amp: true
+  log_every: 50
+
+validation:
+  max_per_label: 5000
+  perturbation: "resize:scale=0.5+jpeg:q=75"   # model selection uses clean + this condition
+
+decision:
+  threshold: 0.5                  # on the calibrated AI probability
+  target_fpr: null                # e.g. 0.01 picks the threshold giving 1% false positives on validation
+
+save_backbone: true               # true = model.pt is self-contained (about 1.2 GB for ViT-L)

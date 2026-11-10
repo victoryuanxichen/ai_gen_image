@@ -1,0 +1,56 @@
+# Evaluation configuration. Any key left out falls back to the default in aidetect/evaluate.py.
+#
+#   python -m aidetect evaluate --manifest data/manifest.csv --model runs/main/model.pt \
+#       --config configs/eval.yaml --out runs/main/eval
+
+batch_size: 64
+workers: 8
+seed: 0
+bootstrap: 200              # resamples for the 95% confidence intervals
+
+robustness:
+  max_per_label: 2000       # images per class and scope re-scored under every perturbation
+  # severity "mild" is gated by acceptance.robustness_mild; "severe" is reported only
+  grid:
+    - {family: jpeg,     spec: "jpeg:q=95",                  severity: mild}
+    - {family: jpeg,     spec: "jpeg:q=85",                  severity: mild}
+    - {family: jpeg,     spec: "jpeg:q=75",                  severity: mild}
+    - {family: jpeg,     spec: "jpeg:q=65",                  severity: severe}
+    - {family: jpeg,     spec: "jpeg:q=50",                  severity: severe}
+    - {family: resize,   spec: "resize:scale=0.75",          severity: mild}
+    - {family: resize,   spec: "resize:scale=0.5",           severity: mild}
+    - {family: resize,   spec: "resize:scale=1.5",           severity: mild}
+    - {family: resize,   spec: "resize:scale=0.25",          severity: severe}
+    - {family: crop,     spec: "crop:frac=0.9",              severity: mild}
+    - {family: crop,     spec: "crop:frac=0.75",             severity: mild}
+    - {family: crop,     spec: "crop:frac=0.5",              severity: severe}
+    - {family: noise,    spec: "noise:sigma=2",              severity: mild}
+    - {family: noise,    spec: "noise:sigma=5",              severity: mild}
+    - {family: noise,    spec: "noise:sigma=10",             severity: severe}
+    - {family: blur,     spec: "blur:sigma=0.5",             severity: mild}
+    - {family: blur,     spec: "blur:sigma=1.0",             severity: mild}
+    - {family: blur,     spec: "blur:sigma=2.0",             severity: severe}
+    - {family: combined, spec: "resize:scale=0.5+jpeg:q=75", severity: mild}
+
+bias:
+  min_per_label: 50         # a group needs this many images of a class to be compared
+
+# PROPOSED thresholds. The requirements call for "agreed thresholds" without
+# giving numbers; replace these with the agreed values.
+acceptance:
+  holdout:
+    auc: 0.99
+    f1: 0.95
+    precision: 0.95
+    recall: 0.95
+  unseen:
+    macro_auc: 0.93
+    macro_balanced_accuracy: 0.85
+    worst_auc: 0.80
+    max_auc_drop: 0.06              # hold-out AUC minus unseen macro AUC
+  robustness_mild:
+    max_auc_drop: 0.05
+    max_flip_rate: 0.10
+  fairness:
+    max_balanced_accuracy_gap: 0.05
+    max_fpr_gap: 0.03
