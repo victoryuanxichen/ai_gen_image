@@ -13,9 +13,13 @@ from typing import Union
 
 from PIL import Image, ImageOps
 
-# Refuse absurdly large images instead of letting them exhaust memory.
+# Refuse absurdly large images instead of letting them exhaust memory. PIL only
+# warns above its limit, so the warning is promoted to an error. The filter is
+# installed once at import because warnings.catch_warnings is not thread-safe
+# and images are decoded in thread pools.
 MAX_PIXELS = 100_000_000
 Image.MAX_IMAGE_PIXELS = MAX_PIXELS
+warnings.simplefilter("error", Image.DecompressionBombWarning)
 
 IMAGE_EXTENSIONS = {".jpg", ".jpeg", ".png", ".bmp", ".webp", ".tif", ".tiff"}
 
@@ -48,21 +52,18 @@ def open_image(src: ImageSource) -> tuple[Image.Image, str]:
     Raises ImageError for anything that cannot be decoded.
     """
     try:
-        with warnings.catch_warnings():
-            # Treat PIL's decompression-bomb warning as a hard failure.
-            warnings.simplefilter("error", Image.DecompressionBombWarning)
-            if isinstance(src, (bytes, bytearray)):
-                im = Image.open(io.BytesIO(bytes(src)))
-            else:
-                im = Image.open(src)
-            fmt = (im.format or "").upper()
-            if fmt == "MPO":  # multi-picture JPEG written by many phones
-                fmt = "JPEG"
-            if getattr(im, "is_animated", False):
-                im.seek(0)
-            im = ImageOps.exif_transpose(im)
-            im = _to_rgb(im)
-            im.load()
+        if isinstance(src, (bytes, bytearray)):
+            im = Image.open(io.BytesIO(bytes(src)))
+        else:
+            im = Image.open(src)
+        fmt = (im.format or "").upper()
+        if fmt == "MPO":  # multi-picture JPEG written by many phones
+            fmt = "JPEG"
+        if getattr(im, "is_animated", False):
+            im.seek(0)
+        im = ImageOps.exif_transpose(im)
+        im = _to_rgb(im)
+        im.load()
     except ImageError:
         raise
     except Exception as exc:  # PIL raises many unrelated exception types

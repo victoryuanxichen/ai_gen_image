@@ -70,6 +70,14 @@ def test_open_image_rejects_tiny_images():
         open_image(_bytes(_image(4, 4), "PNG"))
 
 
+def test_open_image_rejects_oversized_images(monkeypatch):
+    monkeypatch.setattr(Image, "MAX_IMAGE_PIXELS", 1000)
+    with pytest.raises(ImageError):
+        open_image(_bytes(_image(64, 64), "PNG"))    # 4096 px: above the limit
+    monkeypatch.setattr(Image, "MAX_IMAGE_PIXELS", 10_000)
+    assert open_image(_bytes(_image(64, 64), "PNG"))[0].size == (64, 64)
+
+
 def test_harmonize_only_touches_non_jpeg():
     im = _image()
     assert harmonize(im, "JPEG", 96) is im
